@@ -1,8 +1,15 @@
 require("dotenv").config();
 
-// ─── FFMPEG ─────────────────────────────────────────────
+// ─── REQUIRED FIXES ────────────────────────────────────
+
+require("@discordjs/voice");
 
 const ffmpeg = require("ffmpeg-static");
+
+if (!ffmpeg) {
+  console.error("❌ FFmpeg not found");
+}
+
 process.env.FFMPEG_PATH = ffmpeg;
 
 // ─── IMPORTS ────────────────────────────────────────────
@@ -42,6 +49,8 @@ client.distube = new DisTube(client, {
   leaveOnStop: false,
   leaveOnFinish: false,
 
+  nsfw: true,
+
   plugins: [
     new YouTubePlugin(),
     new YtDlpPlugin()
@@ -52,7 +61,7 @@ client.distube = new DisTube(client, {
 
 const stayChannels = new Map();
 
-// ─── SLASH COMMANDS ─────────────────────────────────────
+// ─── REGISTER COMMANDS ─────────────────────────────────
 
 async function registerCommands() {
 
@@ -64,7 +73,7 @@ async function registerCommands() {
       .addStringOption(option =>
         option
           .setName("song")
-          .setDescription("Song name or url")
+          .setDescription("Song name or URL")
           .setRequired(true)
       ),
 
@@ -90,7 +99,7 @@ async function registerCommands() {
 
     new SlashCommandBuilder()
       .setName("nowplaying")
-      .setDescription("Current song"),
+      .setDescription("Current playing song"),
 
     new SlashCommandBuilder()
       .setName("volume")
@@ -104,7 +113,7 @@ async function registerCommands() {
 
     new SlashCommandBuilder()
       .setName("247")
-      .setDescription("24/7 VC System")
+      .setDescription("24/7 VC system")
 
       .addSubcommand(sub =>
         sub
@@ -182,20 +191,24 @@ async function join247(guild) {
 
     await client.distube.play(
       channel,
-      "https://www.youtube.com/watch?v=jfKfPfyJRdk",
+      "lofi",
       {
         member: guild.members.me,
         textChannel: guild.systemChannel || null
       }
     );
 
-    const queue = client.distube.getQueue(guild.id);
+    setTimeout(() => {
 
-    if (queue) {
-      queue.pause();
-    }
+      const queue = client.distube.getQueue(guild.id);
 
-    console.log(`✅ 24/7 Connected in ${guild.name}`);
+      if (queue) {
+        queue.pause();
+      }
+
+    }, 5000);
+
+    console.log(`✅ Joined 24/7 VC in ${guild.name}`);
 
   } catch (err) {
 
@@ -255,7 +268,7 @@ client.on("interactionCreate", async interaction => {
         }
       );
 
-      await interaction.editReply(
+      interaction.editReply(
         `🎵 Playing: **${song}**`
       );
 
@@ -401,10 +414,14 @@ client.on("interactionCreate", async interaction => {
 
     const amount = options.getInteger("amount");
 
+    if (amount < 1 || amount > 100) {
+      return interaction.reply("❌ 1 - 100 dao");
+    }
+
     queue.setVolume(amount);
 
     interaction.reply(
-      `🔊 Volume: ${amount}%`
+      `🔊 Volume set to ${amount}%`
     );
   }
 
@@ -492,6 +509,8 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const guild = oldState.guild;
 
     if (!stayChannels.has(guild.id)) return;
+
+    console.log("🔄 Reconnecting to VC...");
 
     setTimeout(() => {
       join247(guild);
