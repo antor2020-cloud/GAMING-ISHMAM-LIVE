@@ -2,9 +2,17 @@ require("dotenv").config();
 
 require("@discordjs/voice");
 
+// ─── FFMPEG ─────────────────────────────────────────────
+
 const ffmpeg = require("ffmpeg-static");
 
+if (!ffmpeg) {
+  console.error("❌ FFmpeg not found");
+}
+
 process.env.FFMPEG_PATH = ffmpeg;
+
+// ─── IMPORTS ────────────────────────────────────────────
 
 const {
   Client,
@@ -19,9 +27,8 @@ const {
 
 const { DisTube } = require("distube");
 const { YouTubePlugin } = require("@distube/youtube");
-const { YtDlpPlugin } = require("@distube/yt-dlp");
 
-// ─────────────────────────────────────────────
+// ─── CLIENT ─────────────────────────────────────────────
 
 const client = new Client({
   intents: [
@@ -32,9 +39,10 @@ const client = new Client({
   ]
 });
 
-// ─────────────────────────────────────────────
+// ─── DISTUBE ────────────────────────────────────────────
 
 client.distube = new DisTube(client, {
+
   emitNewSongOnly: true,
 
   leaveOnEmpty: false,
@@ -44,12 +52,11 @@ client.distube = new DisTube(client, {
   savePreviousSongs: true,
 
   plugins: [
-    new YouTubePlugin(),
-    new YtDlpPlugin()
+    new YouTubePlugin()
   ]
 });
 
-// ─────────────────────────────────────────────
+// ─── REGISTER COMMANDS ─────────────────────────────────
 
 async function registerCommands() {
 
@@ -67,7 +74,7 @@ async function registerCommands() {
 
     new SlashCommandBuilder()
       .setName("skip")
-      .setDescription("Skip song"),
+      .setDescription("Skip current song"),
 
     new SlashCommandBuilder()
       .setName("stop")
@@ -105,17 +112,26 @@ async function registerCommands() {
     version: "10"
   }).setToken(process.env.TOKEN);
 
-  await rest.put(
-    Routes.applicationCommands(process.env.CLIENT_ID),
-    {
-      body: commands
-    }
-  );
+  try {
 
-  console.log("✅ Slash Commands Registered");
+    console.log("🔄 Registering Slash Commands...");
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      {
+        body: commands
+      }
+    );
+
+    console.log("✅ Slash Commands Registered");
+
+  } catch (err) {
+
+    console.log(err);
+  }
 }
 
-// ─────────────────────────────────────────────
+// ─── READY ──────────────────────────────────────────────
 
 client.once("ready", async () => {
 
@@ -128,7 +144,7 @@ client.once("ready", async () => {
   await registerCommands();
 });
 
-// ─────────────────────────────────────────────
+// ─── INTERACTIONS ───────────────────────────────────────
 
 client.on("interactionCreate", async interaction => {
 
@@ -136,7 +152,7 @@ client.on("interactionCreate", async interaction => {
 
   const { commandName, member, guild, options } = interaction;
 
-  // ─── PLAY ───────────────────────────────
+  // ─── PLAY ────────────────────────────────────────────
 
   if (commandName === "play") {
 
@@ -175,8 +191,8 @@ client.on("interactionCreate", async interaction => {
         voiceChannel,
         song,
         {
-          member,
-          textChannel: interaction.channel
+          textChannel: interaction.channel,
+          member: member
         }
       );
 
@@ -184,17 +200,17 @@ client.on("interactionCreate", async interaction => {
         `🎵 Playing: **${song}**`
       );
 
-    } catch (e) {
+    } catch (err) {
 
-      console.log(e);
+      console.log(err);
 
       interaction.editReply(
-        `❌ ${e.message}`
+        `❌ ${err.message}`
       );
     }
   }
 
-  // ─── SKIP ───────────────────────────────
+  // ─── SKIP ────────────────────────────────────────────
 
   else if (commandName === "skip") {
 
@@ -204,12 +220,21 @@ client.on("interactionCreate", async interaction => {
       return interaction.reply("❌ Nothing playing");
     }
 
-    await queue.skip();
+    try {
 
-    interaction.reply("⏭ Skipped");
+      await queue.skip();
+
+      interaction.reply("⏭ Song skipped");
+
+    } catch {
+
+      queue.stop();
+
+      interaction.reply("⏭ Queue ended");
+    }
   }
 
-  // ─── STOP ───────────────────────────────
+  // ─── STOP ────────────────────────────────────────────
 
   else if (commandName === "stop") {
 
@@ -221,10 +246,10 @@ client.on("interactionCreate", async interaction => {
 
     await queue.stop();
 
-    interaction.reply("⏹ Stopped");
+    interaction.reply("⏹ Music stopped");
   }
 
-  // ─── PAUSE ──────────────────────────────
+  // ─── PAUSE ───────────────────────────────────────────
 
   else if (commandName === "pause") {
 
@@ -239,7 +264,7 @@ client.on("interactionCreate", async interaction => {
     interaction.reply("⏸ Paused");
   }
 
-  // ─── RESUME ─────────────────────────────
+  // ─── RESUME ──────────────────────────────────────────
 
   else if (commandName === "resume") {
 
@@ -254,7 +279,7 @@ client.on("interactionCreate", async interaction => {
     interaction.reply("▶ Resumed");
   }
 
-  // ─── QUEUE ──────────────────────────────
+  // ─── QUEUE ───────────────────────────────────────────
 
   else if (commandName === "queue") {
 
@@ -281,7 +306,7 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-  // ─── NOWPLAYING ─────────────────────────
+  // ─── NOW PLAYING ─────────────────────────────────────
 
   else if (commandName === "nowplaying") {
 
@@ -297,14 +322,26 @@ client.on("interactionCreate", async interaction => {
       .setColor("Blue")
       .setTitle("🎵 Now Playing")
       .setDescription(`[${song.name}](${song.url})`)
-      .setThumbnail(song.thumbnail);
+      .setThumbnail(song.thumbnail)
+      .addFields(
+        {
+          name: "Duration",
+          value: song.formattedDuration,
+          inline: true
+        },
+        {
+          name: "Requested By",
+          value: `<@${song.member.id}>`,
+          inline: true
+        }
+      );
 
     interaction.reply({
       embeds: [embed]
     });
   }
 
-  // ─── VOLUME ─────────────────────────────
+  // ─── VOLUME ──────────────────────────────────────────
 
   else if (commandName === "volume") {
 
@@ -328,7 +365,7 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
-// ─────────────────────────────────────────────
+// ─── MUSIC EVENTS ───────────────────────────────────────
 
 client.distube.on("playSong", (queue, song) => {
 
@@ -343,8 +380,6 @@ client.distube.on("playSong", (queue, song) => {
   });
 });
 
-// ─────────────────────────────────────────────
-
 client.distube.on("addSong", (queue, song) => {
 
   queue.textChannel.send(
@@ -352,7 +387,7 @@ client.distube.on("addSong", (queue, song) => {
   );
 });
 
-// ─────────────────────────────────────────────
+// ─── ERRORS ─────────────────────────────────────────────
 
 client.distube.on("error", (error, queue) => {
 
@@ -363,11 +398,9 @@ client.distube.on("error", (error, queue) => {
   );
 });
 
-// ─────────────────────────────────────────────
-
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
-// ─────────────────────────────────────────────
+// ─── LOGIN ──────────────────────────────────────────────
 
 client.login(process.env.TOKEN);
